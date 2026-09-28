@@ -1,0 +1,53 @@
+{
+  "name": "safardesk-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
+    "db:cleanup-smoke": "tsx scripts/remove-smoke-orgs.ts",
+    "db:reconcile": "tsx scripts/reconcile-supabase.ts",
+    "smoke:plans": "node scripts/smoke-plans.mjs",
+    "smoke:auth": "node scripts/smoke-auth.mjs",
+    "smoke:supabase": "node scripts/smoke-supabase.mjs",
+    "test": "tsx src/tests/isolation.test.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "@supabase/server": "^1.8.0",
+    "@supabase/supabase-js": "^2.117.2",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "pg": "^8.23.0",
+    "postgres": "^3.4.9",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.5.2",
+    "@types/pg": "^8.23.1",
+    "prisma": "^6.16.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

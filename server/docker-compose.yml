@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: safardesk
+      POSTGRES_PASSWORD: safardesk
+      POSTGRES_DB: safardesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - safardesk_pg:/var/lib/postgresql/data
+volumes:
+  safardesk_pg:

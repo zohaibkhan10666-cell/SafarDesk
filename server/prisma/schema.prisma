@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("SQLITE_URL")
+}
+
+model Organization {
+  id               String   @id
+  name             String
+  slug             String   @unique
+  ownerName        String
+  email            String
+  phone            String
+  headquarters     String
+  plan             String   @default("STARTER")
+  status           String   @default("ACTIVE")
+  branchesCount    Int      @default(1)
+  usersCount       Int      @default(1)
+  activeCasesCount Int      @default(0)
+  mrrPKR           Int      @default(0)
+  renewalDate      String
+  storageUsedMB    Int      @default(0)
+  dtsLicense       String?
+  createdDate      String
+  tagline          String?
+  licenseNumber    String?
+  whatsapp         String?
+  defaultCurrency  String   @default("PKR")
+  defaultTimezone  String   @default("Asia/Karachi")
+  currenciesJson   String   @default("[]")
+  settingsJson     String   @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  users            User[]
+  branches         Branch[]
+  records          TenantRecord[]
+  auditLogs        AuditLog[]
+  documents        Document[]
+  sessions         Session[]
+}
+
+model Branch {
+  id          String       @id
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name        String
+  manager     String
+  phone       String
+  activeLeads Int          @default(0)
+  totalStaff  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  users       User[]
+}
+
+model User {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String?
+  branch         Branch?      @relation(fields: [branchId], references: [id])
+  name           String
+  email          String
+  passwordHash   String
+  role           String
+  phone          String?
+  avatar         String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  sessions       Session[]
+  auditLogs      AuditLog[]
+
+  @@unique([organizationId, email])
+}
+
+model Session {
+  id             String       @id
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tokenHash      String
+  expiresAt      DateTime
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime     @default(now())
+}
+
+model TenantRecord {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  collection     String
+  id             String
+  payload        String
+  searchText     String       @default("")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@id([organizationId, collection, id])
+  @@index([organizationId, collection])
+}
+
+model Document {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  category       String
+  customer       String?
+  traveller      String?
+  mimeType       String?
+  sizeBytes      Int          @default(0)
+  storagePath    String?
+  status         String       @default("UPLOADED")
+  uploadedBy     String?
+  expiryDate     String?
+  notes          String?
+  payload        String       @default("{}")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model AuditLog {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  timestamp      String
+  actor          String
+  role           String
+  action         String
+  target         String?
+  details        String
+  branch         String?
+  ip             String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model Plan {
+  id           String  @id
+  name         String
+  price        Int
+  roles        Int
+  branches     Int
+  features     String
+  description  String  @default("")
+  storageGB    Int     @default(1)
+  allowedRoles String  @default("[]")
+  sortOrder    Int     @default(0)
+  isActive     Boolean @default(true)
+}
