@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { api, setToken } from '../lib/api';
 import { loadPublicPlans, readCachedPublicPlans, PUBLIC_PLANS_CACHE_KEY } from '../lib/publicPlans';
+import { submitContactMessage } from '../lib/contactInbox';
 
 /* ─── DATA ─── */
 
@@ -189,6 +190,63 @@ function Field({ label, type = 'text', placeholder, value, onChange, required = 
       <input type={type} placeholder={placeholder} value={value} onChange={onChange} required={required} aria-label={label}
         className="w-full rounded-xl border border-[var(--line-2)] bg-[var(--surface-2)] px-3.5 py-3 text-sm text-[var(--text)] outline-none transition-all duration-200 placeholder:text-[var(--text-3)] focus:border-[var(--mint)] focus:ring-2 focus:ring-[rgba(31,229,163,0.10)]" />
     </label>
+  );
+}
+
+/* Contact form used by the home & contact sections — every submission lands in the
+   Super Admin console inbox (lib/contactInbox.js: local mirror + POST /public/contact). */
+const EMPTY_CONTACT = { firstName: '', lastName: '', email: '', agency: '', message: '' };
+
+function ContactForm({ source = 'contact' }) {
+  const [values, setValues] = useState(EMPTY_CONTACT);
+  const [status, setStatus] = useState({ busy: false, error: '', sent: false });
+  const update = key => event => setValues(current => ({ ...current, [key]: event.target.value }));
+
+  const handleSubmit = async event => {
+    event.preventDefault();
+    if (status.busy) return;
+    setStatus({ busy: true, error: '', sent: false });
+    try {
+      await submitContactMessage(values, source);
+      setValues(EMPTY_CONTACT);
+      setStatus({ busy: false, error: '', sent: true });
+    } catch (error) {
+      setStatus({ busy: false, error: error?.message || 'We could not send your message — please try again.', sent: false });
+    }
+  };
+
+  return (
+    <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="First name" placeholder="Bilal" value={values.firstName} onChange={update('firstName')} required />
+        <Field label="Last name" placeholder="Ahmed" value={values.lastName} onChange={update('lastName')} />
+      </div>
+      <Field label="Work email" type="email" placeholder="you@agency.com" value={values.email} onChange={update('email')} required />
+      <Field label="Agency name" placeholder="Your agency name" value={values.agency} onChange={update('agency')} />
+      <label className="space-y-1.5 block">
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-3)]">{source === 'home' ? 'How can we help?' : 'Message'}</span>
+        <textarea
+          placeholder={source === 'home' ? 'Tell us about your agency and what you need…' : 'How can we help?'}
+          rows={4}
+          required
+          value={values.message}
+          onChange={update('message')}
+          className="w-full rounded-xl border border-[var(--line-2)] bg-[var(--surface-2)] px-3.5 py-3 text-sm text-[var(--text)] outline-none transition-all duration-200 placeholder:text-[var(--text-3)] focus:border-[var(--mint)] focus:ring-2 focus:ring-[rgba(31,229,163,0.10)]"
+        />
+      </label>
+      {(status.sent || status.error) && (
+        <p
+          role={status.error ? 'alert' : 'status'}
+          aria-live="polite"
+          className={`rounded-xl border px-3.5 py-2.5 text-xs ${status.error ? 'border-[rgba(240,74,90,0.35)] bg-[var(--red-dim)] text-[var(--red)]' : 'border-[rgba(31,229,163,0.3)] bg-[var(--mint-dim)] text-[var(--mint)]'}`}
+        >
+          {status.error || 'Thanks — your message is with our team. We typically respond within 24 hours.'}
+        </p>
+      )}
+      <button className="btn-primary-pill w-full" type="submit" disabled={status.busy}>
+        {status.busy ? 'Sending…' : 'Send message'}<Send className="h-4 w-4" />
+      </button>
+    </form>
   );
 }
 
@@ -560,9 +618,9 @@ function HomePage({ setView, beginAuth, selectedPlan, theme, plans = defaultPlan
               <p className="mt-5 text-sm leading-6 text-[var(--text-2)]">Whether you're a solo consultant or a multi-branch operation, we'll help you find the right plan and get you set up quickly.</p>
               <div className="mt-10 space-y-5">
                 {[
-                  [Mail, 'Email', 'hello@safardesk.com'],
-                  [Phone, 'Phone', '+92 300 1234567'],
-                  [MapPin, 'Office', 'Lahore, Pakistan'],
+                  [Mail, 'Email', 'marketing.otechsolutions@gmail.com'],
+                  [Phone, 'Phone', '+92 328 7113785'],
+                  [MapPin, 'Office', 'Faisalabad'],
                   [Clock, 'Hours', 'Mon – Sat, 9:00 AM – 6:00 PM'],
                 ].map(([Icon, label, value]) => (
                   <div key={label} className="flex items-center gap-4">
@@ -580,19 +638,7 @@ function HomePage({ setView, beginAuth, selectedPlan, theme, plans = defaultPlan
             <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8">
               <h3 className="font-display text-lg font-semibold">Send us a message</h3>
               <p className="mt-1 text-xs text-[var(--text-3)]">We typically respond within 24 hours.</p>
-              <form className="mt-6 space-y-4" onSubmit={e => e.preventDefault()}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="First name" placeholder="Bilal" />
-                  <Field label="Last name" placeholder="Ahmed" />
-                </div>
-                <Field label="Work email" type="email" placeholder="you@agency.com" />
-                <Field label="Agency name" placeholder="Your agency name" />
-                <label className="space-y-1.5 block">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-3)]">How can we help?</span>
-                  <textarea placeholder="Tell us about your agency and what you need…" rows={4} className="w-full rounded-xl border border-[var(--line-2)] bg-[var(--surface-2)] px-3.5 py-3 text-sm text-[var(--text)] outline-none transition-all duration-200 placeholder:text-[var(--text-3)] focus:border-[var(--mint)] focus:ring-2 focus:ring-[rgba(31,229,163,0.10)]" />
-                </label>
-                <button className="btn-primary-pill w-full" type="submit">Send message<Send className="h-4 w-4" /></button>
-              </form>
+              <ContactForm source="home" />
             </div>
           </div>
         </div>
@@ -732,9 +778,9 @@ function ContactPage({ theme }) {
               <p className="mt-5 text-sm leading-6 text-[var(--text-2)]">Whether you're a solo consultant or a multi-branch operation, we'll help you find the right plan and get you set up quickly.</p>
               <div className="mt-10 space-y-6">
                 {[
-                  [Mail, 'Email', 'hello@safardesk.com'],
-                  [Phone, 'Phone', '+92 300 1234567'],
-                  [MapPin, 'Office', 'Lahore, Pakistan'],
+                  [Mail, 'Email', 'marketing.otechsolutions@gmail.com'],
+                  [Phone, 'Phone', '+92 328 7113785'],
+                  [MapPin, 'Office', 'Faisalabad'],
                 ].map(([Icon, label, value]) => (
                   <div key={label} className="flex items-center gap-4">
                     <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--mint-dim)]">
@@ -750,19 +796,7 @@ function ContactPage({ theme }) {
             </div>
             <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8">
               <h3 className="font-display text-lg font-semibold">Send us a message</h3>
-              <form className="mt-6 space-y-4" onSubmit={e => e.preventDefault()}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="First name" placeholder="Bilal" />
-                  <Field label="Last name" placeholder="Ahmed" />
-                </div>
-                <Field label="Work email" type="email" placeholder="you@agency.com" />
-                <Field label="Agency name" placeholder="Your agency name" />
-                <label className="space-y-1.5 block">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-3)]">Message</span>
-                  <textarea placeholder="How can we help?" rows={4} className="w-full rounded-xl border border-[var(--line-2)] bg-[var(--surface-2)] px-3.5 py-3 text-sm text-[var(--text)] outline-none transition-all duration-200 placeholder:text-[var(--text-3)] focus:border-[var(--mint)] focus:ring-2 focus:ring-[rgba(31,229,163,0.10)]" />
-                </label>
-                <button className="btn-primary-pill w-full" type="submit">Send message<Send className="h-4 w-4" /></button>
-              </form>
+              <ContactForm source="contact" />
             </div>
           </div>
         </div>

@@ -18,10 +18,15 @@ import {
   X,
   Sparkles
   ,MessageCircle, Edit3, SlidersHorizontal, Flag, CreditCard, Lock, MapPin, TrendingUp, Minus, Eye
-  ,Database, RefreshCw, Copy, Loader2, Server, Trash2
+  ,Database, RefreshCw, Copy, Loader2, Server, Trash2, Mail, MailOpen
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { writePublicPlansCache } from '../lib/publicPlans';
+import {
+  loadContactMessages,
+  setContactMessageStatus,
+  removeContactMessage
+} from '../lib/contactInbox';
 import { checkSupabaseFromBrowser } from '../lib/supabaseClient';
 import {
   initialOrganizations,
@@ -38,6 +43,7 @@ import {
 
 const CONSOLE_TABS = [
   { id: 'tenants',      label: 'Tenants & Subscriptions', icon: Building2 },
+  { id: 'inbox',        label: 'Contact Requests',        icon: Mail },
   { id: 'config',       label: 'Platform Configuration',  icon: ShieldCheck },
   { id: 'enforcement',  label: 'Enforcement Engine',      icon: Lock },
   { id: 'buyers',       label: 'Plan Buyer Analytics',    icon: CreditCard },
@@ -239,6 +245,37 @@ export default function SuperAdminView({ initialTab = 'tenants' }) {
   const [orgBusy, setOrgBusy] = useState(false);
   const [isNewPlan, setIsNewPlan] = useState(false);
 
+  // Contact requests submitted from the public site's home & contact sections.
+  const [contactMessages, setContactMessages] = useState([]);
+  const [contactBusy, setContactBusy] = useState(false);
+  const [contactQuery, setContactQuery] = useState('');
+
+  /* Inbox = live API rows merged with this browser's mirror (lib/contactInbox.js),
+     so messages sent while the API was down still reach the platform owner. */
+  const reloadContactMessages = async () => {
+    setContactBusy(true);
+    try {
+      setContactMessages(await loadContactMessages());
+    } catch {
+      // Mirrored rows already on screen stay put.
+    } finally {
+      setContactBusy(false);
+    }
+  };
+
+  const toggleContactStatus = async (message) => {
+    const next = message.status === 'READ' ? 'NEW' : 'READ';
+    setContactMessages(current => current.map(row => (row.id === message.id ? { ...row, status: next } : row)));
+    await setContactMessageStatus(message.id, next);
+    await reloadContactMessages();
+  };
+
+  const deleteContactMessage = async (message) => {
+    setContactMessages(current => current.filter(row => row.id !== message.id));
+    await removeContactMessage(message.id);
+    setConsoleMessage({ type: 'ok', text: `Contact request from ${[message.firstName, message.lastName].filter(Boolean).join(' ') || message.email} removed from the platform inbox.` });
+  };
+
   // Supabase database console — live probe (backend) + browser health check
   const [sbStatus, setSbStatus] = useState(null);
   const [sbBrowser, setSbBrowser] = useState(null);
@@ -339,6 +376,7 @@ export default function SuperAdminView({ initialTab = 'tenants' }) {
 
   useEffect(() => {
     if (consoleTab === 'database' && !sbStatus && !sbBusy) loadSupabase();
+    if (consoleTab === 'inbox') reloadContactMessages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consoleTab]);
 
@@ -405,6 +443,7 @@ export default function SuperAdminView({ initialTab = 'tenants' }) {
       })(),
       reloadOrgs(),
       reloadEnforcement(),
+      reloadContactMessages(),
       (async () => {
         try {
           const { roles } = await api.platform.roles();
@@ -670,6 +709,15 @@ export default function SuperAdminView({ initialTab = 'tenants' }) {
     .filter(log => !hiddenAuditIds.has(log.id))
     .filter(log => `${log.actor} ${log.action} ${log.target} ${log.details}`.toLowerCase().includes(auditQuery.toLowerCase()));
 
+  /* Public-site contact requests — submitted from the home & contact sections. */
+  const contactUnread = contactMessages.filter(row => row.status !== 'READ').length;
+  const contactHomeCount = contactMessages.filter(row => row.source === 'home').length;
+  const filteredContacts = contactMessages.filter(row =>
+    `${row.firstName} ${row.lastName} ${row.email} ${row.agency} ${row.message}`
+      .toLowerCase()
+      .includes(contactQuery.trim().toLowerCase())
+  );
+
   /* ---------------- Platform configuration state (README §19.1) ---------------- */
   const planById = useMemo(() => plans.reduce((acc, plan) => ({ ...acc, [plan.id]: plan }), {}), [plans]);
 
@@ -901,6 +949,11 @@ export default function SuperAdminView({ initialTab = 'tenants' }) {
             >
               <Icon className="w-3.5 h-3.5" />
               <span>{tab.label}</span>
+              {tab.id === 'inbox' && contactUnread > 0 && (
+                <span className="rounded-full bg-[var(--amber-dim)] px-1.5 py-0.5 text-[9px] font-mono font-bold text-[var(--amber)]" title={`${contactUnread} unread contact request(s)`}>
+                  {contactUnread}
+                </span>
+              )}
             </button>
           );
         })}
@@ -1971,6 +2024,107 @@ export default function SuperAdminView({ initialTab = 'tenants' }) {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {consoleTab === 'inbox' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatTile eyebrow="Contact Requests" value={contactMessages.length} sub="Sent from the public site" tone="var(--cyan)" />
+            <StatTile eyebrow="New / Unread" value={contactUnread} sub="Awaiting a first reply" tone="var(--amber)" />
+            <StatTile eyebrow="Replied" value={contactMessages.length - contactUnread} sub="Marked handled by the platform" tone="var(--mint)" />
+            <StatTile eyebrow="From Home Section" value={contactHomeCount} sub={`${contactMessages.length - contactHomeCount} from the Contact section`} tone="var(--violet)" />
+          </div>
+
+          <div className="sd-card p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-[var(--text)] font-display">Contact Requests from the Public Site</h3>
+                <p className="text-xs text-[var(--text-3)] font-body">
+                  Messages sent from the Home and Contact sections — first name, last name, work email, agency and their note, delivered straight to the platform owner.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-[var(--text-3)] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={contactQuery}
+                    onChange={e => setContactQuery(e.target.value)}
+                    placeholder="Filter name, email, agency..."
+                    aria-label="Filter contact requests"
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-[var(--surface-2)] border border-[var(--line-2)] rounded-lg text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--mint)]"
+                  />
+                </div>
+                <button type="button" onClick={reloadContactMessages} disabled={contactBusy} className="btn-secondary-pill shrink-0">
+                  <span className="inline-flex items-center gap-1.5">
+                    <RefreshCw className={`w-3.5 h-3.5 ${contactBusy ? 'animate-spin' : ''}`} /> Refresh
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="border border-[var(--line)] rounded-xl overflow-hidden divide-y divide-[var(--line)] text-xs font-body">
+              <div className="grid grid-cols-12 gap-2 p-3 bg-[var(--surface-2)] font-mono text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">
+                <div className="col-span-3">Visitor</div>
+                <div className="col-span-3">Agency &amp; email</div>
+                <div className="col-span-4">Message</div>
+                <div className="col-span-1">Section</div>
+                <div className="col-span-1 text-right">Status</div>
+              </div>
+
+              {filteredContacts.map(row => {
+                const name = [row.firstName, row.lastName].filter(Boolean).join(' ') || 'Unnamed visitor';
+                const unread = row.status !== 'READ';
+                return (
+                  <div key={row.id} className={`grid grid-cols-12 gap-2 p-3.5 items-start transition-colors ${unread ? 'bg-[rgba(229,176,74,0.07)] hover:bg-[rgba(229,176,74,0.13)]' : 'hover:bg-[var(--surface-2)]/60'}`}>
+                    <div className="col-span-3">
+                      <div className={`font-semibold ${unread ? 'text-[var(--text)]' : 'text-[var(--text-2)]'}`}>{name}</div>
+                      <div className="text-[10px] text-[var(--text-3)] font-mono">{new Date(row.createdAt).toLocaleString()}</div>
+                    </div>
+                    <div className="col-span-3 space-y-0.5">
+                      <div className="text-[var(--text-2)]">{row.agency || '—'}</div>
+                      <div className="text-[10px] text-[var(--cyan)] font-mono break-all">{row.email}</div>
+                    </div>
+                    <div className="col-span-4 text-[var(--text-2)] leading-5">{row.message || '—'}</div>
+                    <div className="col-span-1">
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold ${row.source === 'home' ? 'badge-mint' : 'badge-cyan'}`}>
+                        {(row.source || 'contact').toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="col-span-1 flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleContactStatus(row)}
+                        title={unread ? 'Mark as replied' : 'Mark as new'}
+                        aria-label={unread ? `Mark request from ${name} as replied` : `Mark request from ${name} as new`}
+                        className={`rounded-lg border p-1.5 transition-colors ${unread ? 'border-[rgba(31,229,163,0.3)] text-[var(--mint)] hover:bg-[var(--mint-dim)]' : 'border-[var(--line-2)] text-[var(--text-3)] hover:text-[var(--mint)]'}`}
+                      >
+                        {unread ? <Mail className="h-3.5 w-3.5" /> : <MailOpen className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteContactMessage(row)}
+                        title="Delete this contact request"
+                        aria-label={`Delete request from ${name}`}
+                        className="rounded-lg border border-[var(--line-2)] p-1.5 text-[var(--text-3)] transition-colors hover:border-[rgba(240,74,90,0.4)] hover:bg-[var(--red-dim)] hover:text-[var(--red)]"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {!filteredContacts.length && (
+                <div className="p-6 text-center text-xs text-[var(--text-3)]">
+                  {contactQuery.trim()
+                    ? 'No contact request matches this filter.'
+                    : 'No contact requests yet — messages sent from the public site’s Contact section appear here instantly.'}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

@@ -19,6 +19,11 @@ import {
   updateRule
 } from '../platformConfig.js';
 import { platformSupabaseRouter } from './platformSupabase.js';
+import {
+  listContactMessages,
+  updateContactMessage,
+  removeContactMessage
+} from '../contactInbox.js';
 
 export const platformRouter = Router();
 platformRouter.use(requireAuth, requirePermission('platform.admin'));
@@ -724,4 +729,47 @@ platformRouter.get('/audit', async (req, res) => {
     }
   });
   res.json({ logs });
+});
+
+/* ------------------------------------------------------------------ */
+/* Contact requests submitted on the public site (home & contact       */
+/* sections) � platform-owned rows, never part of a tenant partition.  */
+/* ------------------------------------------------------------------ */
+
+platformRouter.get('/contact-messages', (_req, res) => {
+  res.json({ messages: listContactMessages() });
+});
+
+platformRouter.patch('/contact-messages/:id', async (req, res) => {
+  const status = String(req.body?.status || '').toUpperCase();
+  if (status !== 'NEW' && status !== 'READ') {
+    return res.status(400).json({ error: 'status must be NEW or READ' });
+  }
+  const updated = updateContactMessage(req.params.id, { status });
+  if (!updated) return res.status(404).json({ error: 'Contact request not found' });
+  await writeAudit({
+    user: req.user!,
+    action: 'PLATFORM_CONTACT_UPDATED',
+    target: updated.id,
+    details: `Contact request from ${updated.email} marked ${updated.status}`,
+    ip: req.ip
+  }).catch(() => {
+    // Audit trail is best-effort — the inbox status change already landed.
+  });
+  res.json({ message: updated });
+});
+
+platformRouter.delete('/contact-messages/:id', async (req, res) => {
+  const removed = removeContactMessage(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'Contact request not found' });
+  await writeAudit({
+    user: req.user!,
+    action: 'PLATFORM_CONTACT_DELETED',
+    target: req.params.id,
+    details: 'Contact request removed from the platform inbox',
+    ip: req.ip
+  }).catch(() => {
+    // Audit trail is best-effort — the row is already gone from the inbox.
+  });
+  res.json({ deleted: true });
 });

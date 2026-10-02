@@ -167,6 +167,13 @@ export const api = {
     updateOrganization: (id, body) =>
       request(`/api/v1/platform/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
+    // Public-site contact requests landing in the platform inbox (README §19).
+    contactMessages: () => request('/api/v1/platform/contact-messages'),
+    updateContactMessage: (id, body) =>
+      request(`/api/v1/platform/contact-messages/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    deleteContactMessage: (id) =>
+      request(`/api/v1/platform/contact-messages/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
     enforcement: () => request('/api/v1/platform/enforcement'),
     roles: () => request('/api/v1/platform/roles'),
     audit: (limit = 60) => request(`/api/v1/platform/audit?limit=${limit}`)
@@ -174,7 +181,8 @@ export const api = {
 
   // Anonymous endpoints used by the public marketing site (no session required).
   public: {
-    plans: () => request('/api/v1/public/plans')
+    plans: () => request('/api/v1/public/plans'),
+    contact: (message) => request('/api/v1/public/contact', { method: 'POST', body: JSON.stringify(message) })
   },
 
   entitlements: {
